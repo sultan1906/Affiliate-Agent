@@ -7,17 +7,16 @@ from typing import Any, Dict, Optional
 import requests
 
 
-API_URL = "https://eco.taobao.com/router/rest"
+API_URL = "https://api-sg.aliexpress.com/sync"
 
 
 def _sign_params(params: Dict[str, str], secret: str) -> str:
-    """Generate HMAC-MD5 signature for AliExpress TOP API."""
+    """Generate HMAC-MD5 signature for AliExpress global API."""
     sorted_params = sorted(params.items())
     concatenated = "".join(f"{k}{v}" for k, v in sorted_params)
-    sign_str = secret + concatenated + secret
     return hmac.new(
         secret.encode("utf-8"),
-        sign_str.encode("utf-8"),
+        concatenated.encode("utf-8"),
         hashlib.md5,
     ).hexdigest().upper()
 
@@ -42,7 +41,7 @@ def generate_affiliate_link(
         params = {
             "app_key": config["ALI_APP_KEY"],
             "method": "aliexpress.affiliate.link.generate",
-            "sign_method": "hmac-md5",
+            "sign_method": "hmac",
             "timestamp": str(int(time.time() * 1000)),
             "v": "2.0",
             "format": "json",

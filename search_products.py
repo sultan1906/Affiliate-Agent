@@ -1,11 +1,16 @@
 """Search AliExpress for wedding-related products and save to queue."""
+import hashlib
+import hmac
+import time
 import uuid
 from typing import Any, Dict, List, Optional, Set
 
-from aliexpress_api import AliExpress
+import requests
 
 from pending_queue import save_queue, load_queue
 
+
+API_URL = "https://api-sg.aliexpress.com/sync"
 
 WEDDING_KEYWORDS = [
     "bridal hair clips",
@@ -16,7 +21,66 @@ WEDDING_KEYWORDS = [
 ]
 
 
+def _sign_params(params: Dict[str, str], secret: str) -> str:
+    """Generate HMAC-MD5 signature for AliExpress global API."""
+    sorted_params = sorted(params.items())
+    concatenated = "".join(f"{k}{v}" for k, v in sorted_params)
+    return hmac.new(
+        secret.encode("utf-8"),
+        concatenated.encode("utf-8"),
+        hashlib.md5,
+    ).hexdigest().upper()
+
+
+def _search_aliexpress(keyword: str, config: Dict[str, str]) -> List[Dict[str, Any]]:
+    """Search AliExpress using the official affiliate product query API."""
+    params = {
+        "app_key": config["ALI_APP_KEY"],
+        "method": "aliexpress.affiliate.product.query",
+        "sign_method": "hmac",
+        "timestamp": str(int(time.time() * 1000)),
+        "v": "2.0",
+        "format": "json",
+        "keywords": keyword,
+        "tracking_id": config["ALI_TRACKING_ID"],
+        "target_currency": "USD",
+        "target_language": "EN",
+        "page_no": "1",
+        "page_size": "10",
+    }
+
+    params["sign"] = _sign_params(params, config["ALI_SECRET"])
+
+    try:
+        response = requests.get(API_URL, params=params, timeout=15)
+        if response.status_code != 200:
+            print(f"AliExpress API returned status {response.status_code} for '{keyword}'")
+            return []
+
+        data = response.json()
+        resp_result = (
+            data.get("aliexpress_affiliate_product_query_response", {})
+            .get("resp_result", {})
+        )
+
+        if resp_result.get("resp_code") != 200:
+            print(f"AliExpress API error for '{keyword}': {resp_result}")
+            return []
+
+        products = (
+            resp_result.get("result", {})
+            .get("products", {})
+            .get("product", [])
+        )
+        return products
+
+    except Exception as e:
+        print(f"Error searching for '{keyword}': {e}")
+        return []
+
+
 def search_and_save(
+    config: Dict[str, str],
     output_file: str = "pending_queue.json",
     keywords: Optional[List[str]] = None,
     max_results: int = 10,
@@ -24,6 +88,7 @@ def search_and_save(
     """Search AliExpress for products and save top results to queue.
 
     Args:
+        config: Configuration dict with ALI_APP_KEY, ALI_SECRET, ALI_TRACKING_ID.
         output_file: Path to the JSON queue file.
         keywords: Search keywords (defaults to WEDDING_KEYWORDS).
         max_results: Maximum number of products to save.
@@ -34,24 +99,18 @@ def search_and_save(
     if keywords is None:
         keywords = WEDDING_KEYWORDS
 
-    ali = AliExpress()
     all_products: List[Dict[str, Any]] = []
 
     for keyword in keywords:
-        try:
-            result = ali.search_products(keyword)
-            products = result.get("products", [])
-            all_products.extend(products)
-        except Exception as e:
-            print(f"Error searching for '{keyword}': {e}")
-            continue
+        products = _search_aliexpress(keyword, config)
+        all_products.extend(products)
 
     # Deduplicate by product id
     seen_ids: Set[str] = set()
     unique_products: List[Dict[str, Any]] = []
     for p in all_products:
-        pid = str(p.get("id", ""))
-        if pid not in seen_ids:
+        pid = str(p.get("product_id", ""))
+        if pid and pid not in seen_ids:
             seen_ids.add(pid)
             unique_products.append(p)
 
@@ -61,16 +120,21 @@ def search_and_save(
     # Format for queue
     queue_items: List[Dict[str, Any]] = []
     for p in top_products:
+        sale_price_raw = p.get("target_sale_price", p.get("target_original_price", "0"))
+        try:
+            sale_price = float(str(sale_price_raw).replace(",", ""))
+        except (ValueError, TypeError):
+            sale_price = 0.0
         item = {
             "id": str(uuid.uuid4()),
-            "product_id": str(p.get("id", "")),
-            "title": p.get("title", "Unknown Product"),
-            "price": p.get("min_price", 0.0),
-            "rating": p.get("rating"),  # Not available from AliExpress scraper
-            "image_url": p.get("thumbnail", ""),
-            "product_url": p.get("url", ""),
+            "product_id": str(p.get("product_id", "")),
+            "title": p.get("product_title", "Unknown Product"),
+            "price": sale_price,
+            "rating": p.get("evaluate_rate", None),
+            "image_url": p.get("product_main_image_url", ""),
+            "product_url": p.get("product_detail_url", ""),
             "status": "pending",
-            "affiliate_link": None,
+            "affiliate_link": p.get("promotion_link", None),
         }
         queue_items.append(item)
 

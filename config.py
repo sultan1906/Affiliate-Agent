@@ -11,6 +11,9 @@ REQUIRED_VARS = [
     "ALI_TRACKING_ID",
     "TELEGRAM_BOT_TOKEN",
     "TELEGRAM_CHAT_ID",
+]
+
+OPTIONAL_VARS = [
     "WHATSAPP_PHONE_NUMBER_ID",
     "WHATSAPP_ACCESS_TOKEN",
     "WHATSAPP_GROUP_ID",
@@ -42,5 +45,10 @@ def load_config() -> Dict[str, str]:
         raise ValueError(
             f"Missing required environment variables: {', '.join(missing)}"
         )
+
+    for var in OPTIONAL_VARS:
+        value = os.environ.get(var)
+        if value:
+            config[var] = value
 
     return config
