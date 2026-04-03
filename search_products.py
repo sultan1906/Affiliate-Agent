@@ -120,12 +120,16 @@ def search_and_save(
     # Format for queue
     queue_items: List[Dict[str, Any]] = []
     for p in top_products:
-        sale_price = p.get("target_sale_price", p.get("target_original_price", "0"))
+        sale_price_raw = p.get("target_sale_price", p.get("target_original_price", "0"))
+        try:
+            sale_price = float(str(sale_price_raw).replace(",", ""))
+        except (ValueError, TypeError):
+            sale_price = 0.0
         item = {
             "id": str(uuid.uuid4()),
             "product_id": str(p.get("product_id", "")),
             "title": p.get("product_title", "Unknown Product"),
-            "price": float(str(sale_price).replace(",", "")),
+            "price": sale_price,
             "rating": p.get("evaluate_rate", None),
             "image_url": p.get("product_main_image_url", ""),
             "product_url": p.get("product_detail_url", ""),
