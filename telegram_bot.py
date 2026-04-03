@@ -65,7 +65,7 @@ async def search_command(
     await update.message.reply_text("Searching for wedding products on AliExpress...")
 
     try:
-        products = search_and_save()
+        products = search_and_save(config)
         await update.message.reply_text(
             f"Found {len(products)} products! Use /queue to review them."
         )
