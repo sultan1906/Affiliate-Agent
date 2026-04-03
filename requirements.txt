@@ -1,0 +1,7 @@
+aliexpress-api-wrapper
+python-telegram-bot>=20.0
+python-dotenv
+requests
+aiohttp
+pytest
+pytest-asyncio

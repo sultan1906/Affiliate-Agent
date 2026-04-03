@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+images/
+pending_queue.json
+.pytest_cache/
+.context/
