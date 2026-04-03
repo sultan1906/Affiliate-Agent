@@ -57,15 +57,30 @@ async def start_command(
 async def search_command(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
-    """Handle /search command - trigger product search."""
+    """Handle /search command - trigger product search.
+
+    Usage: /search <keywords>  — search for specific terms
+           /search              — use default wedding keywords
+    """
     config = context.bot_data.get("config", {})
     if not _is_authorized(update, config):
         return
 
-    await update.message.reply_text("Searching for wedding products on AliExpress...")
+    # Parse custom keywords from the message text
+    raw_text = update.message.text or ""
+    user_input = raw_text.replace("/search", "", 1).strip()
+
+    if user_input:
+        keywords = [kw.strip() for kw in user_input.split(",") if kw.strip()]
+        await update.message.reply_text(
+            f"Searching AliExpress for: {', '.join(keywords)}..."
+        )
+    else:
+        keywords = None  # will use default WEDDING_KEYWORDS
+        await update.message.reply_text("Searching for wedding products on AliExpress...")
 
     try:
-        products = search_and_save(config)
+        products = search_and_save(config, keywords=keywords)
         await update.message.reply_text(
             f"Found {len(products)} products! Use /queue to review them."
         )
