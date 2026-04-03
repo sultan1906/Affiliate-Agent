@@ -1,6 +1,6 @@
 """Search AliExpress for wedding-related products and save to queue."""
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from aliexpress_api import AliExpress
 
@@ -47,7 +47,7 @@ def search_and_save(
             continue
 
     # Deduplicate by product id
-    seen_ids: set[str] = set()
+    seen_ids: Set[str] = set()
     unique_products: List[Dict[str, Any]] = []
     for p in all_products:
         pid = str(p.get("id", ""))
@@ -66,7 +66,7 @@ def search_and_save(
             "product_id": str(p.get("id", "")),
             "title": p.get("title", "Unknown Product"),
             "price": p.get("min_price", 0.0),
-            "rating": p.get("rating", 0.0),
+            "rating": p.get("rating"),  # Not available from AliExpress scraper
             "image_url": p.get("thumbnail", ""),
             "product_url": p.get("url", ""),
             "status": "pending",

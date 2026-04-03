@@ -47,7 +47,7 @@ def download_image(
 
         return filepath
 
-    except Exception as e:
+    except (requests.RequestException, OSError) as e:
         print(f"Error downloading image: {e}")
         return None
 

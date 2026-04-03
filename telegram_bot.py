@@ -1,4 +1,5 @@
 """Telegram bot for managing affiliate product queue."""
+import asyncio
 import json
 import logging
 from typing import Dict, Any
@@ -8,6 +9,7 @@ from telegram import (
     InlineKeyboardMarkup,
     Update,
 )
+from telegram.error import BadRequest
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -168,10 +170,9 @@ async def status_command(
 
 async def _edit_callback_message(query, text: str) -> None:
     """Edit the callback message, handling both photo and text messages."""
-    try:
+    if query.message and query.message.caption is not None:
         await query.edit_message_caption(caption=text)
-    except Exception:
-        # Message has no caption (was sent as text, not photo)
+    else:
         await query.edit_message_text(text=text)
 
 
@@ -196,33 +197,36 @@ async def button_callback(
     action, product_id = data.split(":", 1)
 
     if action == "approve":
-        # Update status
-        update_product_status(product_id, "approved")
-
-        # Generate affiliate link
+        # Load product first, attempt downstream work before persisting status
         queue = load_queue()
         product = next((p for p in queue if p["id"] == product_id), None)
 
         if product:
-            affiliate_link = generate_affiliate_link(
-                product["product_url"], config
+            # Generate affiliate link (blocking, run in thread)
+            affiliate_link = await asyncio.to_thread(
+                generate_affiliate_link, product["product_url"], config
             )
             if affiliate_link:
-                update_product_field(product_id, "affiliate_link", affiliate_link)
                 product["affiliate_link"] = affiliate_link
 
-            # Send to WhatsApp
+            # Send to WhatsApp (blocking, run in thread)
             try:
-                success = send_product_to_whatsapp(product, config)
+                success = await asyncio.to_thread(
+                    send_product_to_whatsapp, product, config
+                )
                 if success:
+                    # Only persist approved status after successful send
+                    update_product_status(product_id, "approved")
+                    if affiliate_link:
+                        update_product_field(product_id, "affiliate_link", affiliate_link)
                     text = f"✅ Approved and sent to WhatsApp!\n\n{product['title']}"
                 else:
-                    text = f"✅ Approved but WhatsApp send failed.\n\n{product['title']}"
+                    text = f"⚠️ WhatsApp send failed. Product remains pending.\n\n{product['title']}"
             except Exception as e:
                 logger.error(f"WhatsApp send error: {e}")
-                text = f"✅ Approved but WhatsApp error: {e}\n\n{product['title']}"
+                text = f"⚠️ WhatsApp error: {e}. Product remains pending.\n\n{product['title']}"
         else:
-            text = "✅ Approved (product not found in queue)"
+            text = "⚠️ Product not found in queue"
 
         await _edit_callback_message(query, text)
 
