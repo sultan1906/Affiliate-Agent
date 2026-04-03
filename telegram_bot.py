@@ -237,7 +237,7 @@ async def button_callback(
 
 def _escape_markdown(text: str) -> str:
     """Escape special characters for Telegram Markdown."""
-    for char in ["_", "*", "[", "]", "(", ")", "~", "`", ">", "#", "+", "-", "=", "|", "{", "}", ".", "!"]:
+    for char in ["_", "*", "[", "`"]:
         text = text.replace(char, f"\\{char}")
     return text
 

@@ -42,15 +42,12 @@ def save_queue(products: List[Dict[str, Any]], filepath: str = DEFAULT_QUEUE_FIL
 
 def _atomic_update(filepath: str, updater) -> None:
     """Load, mutate, and save queue under a single exclusive lock."""
-    # Ensure file exists
-    if not os.path.exists(filepath):
-        with open(filepath, "w") as f:
-            json.dump([], f)
-
-    with open(filepath, "r+") as f:
+    with open(filepath, "a+") as f:
         fcntl.flock(f, fcntl.LOCK_EX)
         try:
-            data = json.load(f)
+            f.seek(0)
+            content = f.read()
+            data = json.loads(content) if content.strip() else []
             updater(data)
             f.seek(0)
             f.truncate()

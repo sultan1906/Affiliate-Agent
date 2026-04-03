@@ -76,7 +76,7 @@ def search_and_save(
 
     # Merge with existing queue — preserve approved/rejected items
     existing = load_queue(output_file)
-    existing_product_ids = {p["product_id"] for p in existing}
+    existing_product_ids = {p.get("product_id", "") for p in existing}
     new_items = [item for item in queue_items if item["product_id"] not in existing_product_ids]
     merged = existing + new_items
 
