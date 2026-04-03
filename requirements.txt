@@ -1,5 +1,5 @@
 aliexpress-api-wrapper
-python-telegram-bot>=20.0
+python-telegram-bot>=21.0
 python-dotenv
 requests>=2.33.0
 aiohttp>=3.13.4
