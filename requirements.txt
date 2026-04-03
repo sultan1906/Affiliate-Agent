@@ -1,4 +1,3 @@
-aliexpress-api-wrapper
 python-telegram-bot>=21.0
 python-dotenv
 requests>=2.33.0
