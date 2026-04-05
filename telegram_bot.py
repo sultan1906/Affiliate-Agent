@@ -90,6 +90,8 @@ async def search_command(
     if not _is_authorized(update, config):
         return
 
+    context.user_data.pop("awaiting_search_keywords", None)
+
     # Parse custom keywords from the message text
     raw_text = update.message.text or ""
     user_input = raw_text.replace("/search", "", 1).strip()
@@ -104,7 +106,9 @@ async def search_command(
         await update.message.reply_text("Searching for wedding products on AliExpress...")
 
     try:
-        products = search_and_save(config, keywords=keywords)
+        products = await asyncio.to_thread(
+            search_and_save, config, keywords=keywords
+        )
         await update.message.reply_text(
             f"Found {len(products)} products! Tap Queue to review them."
         )
@@ -247,7 +251,9 @@ async def _handle_menu_search(query, config) -> None:
 async def _run_search(message, config, keywords=None) -> None:
     """Execute a product search and send results."""
     try:
-        products = search_and_save(config, keywords=keywords)
+        products = await asyncio.to_thread(
+            search_and_save, config, keywords=keywords
+        )
         await message.reply_text(
             f"Found {len(products)} products! Tap Queue to review them."
         )
@@ -327,13 +333,14 @@ async def _handle_menu_status(query) -> None:
 
 
 async def _handle_menu_clear(query) -> None:
-    """Handle the Clear button press from the main menu."""
-    removed = clear_queue()
-    if removed:
-        await query.edit_message_text(f"Cleared {removed} products from the queue.")
-    else:
-        await query.edit_message_text("Queue is already empty.")
-    await _send_main_menu(query.message)
+    """Ask for confirmation before clearing the queue."""
+    keyboard = InlineKeyboardMarkup(
+        [[
+            InlineKeyboardButton("✅ Confirm", callback_data="clear:confirm"),
+            InlineKeyboardButton("⬅️ Cancel", callback_data="menu:back"),
+        ]]
+    )
+    await query.edit_message_text("Clear the entire queue?", reply_markup=keyboard)
 
 
 async def button_callback(
@@ -355,6 +362,10 @@ async def button_callback(
         return
 
     action, value = data.split(":", 1)
+
+    # Clear stale search-keyword flag unless we're setting it right now
+    if not (action == "search" and value == "custom"):
+        context.user_data.pop("awaiting_search_keywords", None)
 
     # Handle main menu buttons
     if action == "menu":
@@ -384,6 +395,16 @@ async def button_callback(
                 "Enter your search keywords (comma-separated):",
                 reply_markup=ForceReply(selective=False),
             )
+        return
+
+    # Handle clear confirmation
+    if action == "clear" and value == "confirm":
+        removed = clear_queue()
+        if removed:
+            await query.edit_message_text(f"Cleared {removed} products from the queue.")
+        else:
+            await query.edit_message_text("Queue is already empty.")
+        await _send_main_menu(query.message)
         return
 
     product_id = value
