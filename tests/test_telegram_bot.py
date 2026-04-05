@@ -20,8 +20,8 @@ def test_create_bot_registers_handlers():
 
     app = create_bot(config)
 
-    # Should have 5 handlers (4 commands + 1 callback)
-    assert len(app.handlers[0]) == 5
+    # Should have 7 handlers (5 commands + 1 callback + 1 message handler)
+    assert len(app.handlers[0]) == 7
     assert app.bot_data["config"] == config
 
 
@@ -55,9 +55,13 @@ async def test_start_command_sends_welcome():
 
     await start_command(update, context)
 
-    update.message.reply_text.assert_called_once()
-    call_text = update.message.reply_text.call_args[0][0]
-    assert "Welcome" in call_text
+    # First call is welcome message, second is the menu
+    assert update.message.reply_text.call_count == 2
+    welcome_text = update.message.reply_text.call_args_list[0][0][0]
+    assert "Welcome" in welcome_text
+    # Second call should have reply_markup (inline keyboard menu)
+    menu_kwargs = update.message.reply_text.call_args_list[1][1]
+    assert "reply_markup" in menu_kwargs
 
 
 @pytest.mark.asyncio
@@ -75,7 +79,9 @@ async def test_status_command_shows_counts():
     with patch("telegram_bot.count_by_status", return_value={"pending": 3, "approved": 1}):
         await status_command(update, context)
 
-    update.message.reply_text.assert_called_once()
-    call_text = update.message.reply_text.call_args[0][0]
+    # First call is status text, second is menu (via _send_main_menu which
+    # is called inside status_command — but status_command itself only calls
+    # reply_text once since it doesn't show menu).
+    call_text = update.message.reply_text.call_args_list[0][0][0]
     assert "Pending: 3" in call_text
     assert "Approved: 1" in call_text

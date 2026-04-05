@@ -10,11 +10,14 @@ from telegram import (
     Update,
 )
 from telegram.error import BadRequest
+from telegram import ForceReply
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
+    MessageHandler,
+    filters,
 )
 
 from affiliate_links import generate_affiliate_link
@@ -38,6 +41,29 @@ def _is_authorized(update: Update, config: Dict[str, str]) -> bool:
     return chat_id == config.get("TELEGRAM_CHAT_ID", "")
 
 
+def _main_menu_keyboard() -> InlineKeyboardMarkup:
+    """Build the main menu inline keyboard."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("🔍 Search", callback_data="menu:search"),
+                InlineKeyboardButton("📋 Queue", callback_data="menu:queue"),
+            ],
+            [
+                InlineKeyboardButton("📊 Status", callback_data="menu:status"),
+                InlineKeyboardButton("🗑 Clear", callback_data="menu:clear"),
+            ],
+        ]
+    )
+
+
+async def _send_main_menu(message, text: str = None) -> None:
+    """Send (or re-send) the main menu."""
+    if text is None:
+        text = "What would you like to do?"
+    await message.reply_text(text, reply_markup=_main_menu_keyboard())
+
+
 async def start_command(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
@@ -47,13 +73,9 @@ async def start_command(
         return
 
     await update.message.reply_text(
-        "Welcome to the Affiliate Automation Agent!\n\n"
-        "Available commands:\n"
-        "/search - Search for wedding products on AliExpress\n"
-        "/queue - Review pending products (approve/reject)\n"
-        "/status - Show product queue statistics\n"
-        "/clear - Clear all products from the queue"
+        "Welcome to the Affiliate Automation Agent!"
     )
+    await _send_main_menu(update.message)
 
 
 async def search_command(
@@ -84,8 +106,9 @@ async def search_command(
     try:
         products = search_and_save(config, keywords=keywords)
         await update.message.reply_text(
-            f"Found {len(products)} products! Use /queue to review them."
+            f"Found {len(products)} products! Tap Queue to review them."
         )
+        await _send_main_menu(update.message)
     except Exception as e:
         logger.error(f"Search failed: {e}")
         await update.message.reply_text(
@@ -105,8 +128,9 @@ async def queue_command(
 
     if not pending:
         await update.message.reply_text(
-            "No pending products in the queue. Use /search to find new products."
+            "No pending products in the queue."
         )
+        await _send_main_menu(update.message)
         return
 
     await update.message.reply_text(
@@ -208,10 +232,114 @@ async def _edit_callback_message(query, text: str) -> None:
         await query.edit_message_text(text=text)
 
 
+async def _handle_menu_search(query, config) -> None:
+    """Handle the Search button press — show search sub-menu."""
+    keyboard = InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("🔍 Default keywords", callback_data="search:default")],
+            [InlineKeyboardButton("✏️ Enter keywords", callback_data="search:custom")],
+            [InlineKeyboardButton("⬅️ Back", callback_data="menu:back")],
+        ]
+    )
+    await query.edit_message_text("How would you like to search?", reply_markup=keyboard)
+
+
+async def _run_search(message, config, keywords=None) -> None:
+    """Execute a product search and send results."""
+    try:
+        products = search_and_save(config, keywords=keywords)
+        await message.reply_text(
+            f"Found {len(products)} products! Tap Queue to review them."
+        )
+    except Exception as e:
+        logger.error(f"Search failed: {e}")
+        await message.reply_text(f"Search failed: {e}\nPlease try again.")
+    await _send_main_menu(message)
+
+
+async def _handle_menu_queue(query) -> None:
+    """Handle the Queue button press from the main menu."""
+    pending = get_products_by_status("pending")
+    if not pending:
+        await query.edit_message_text("No pending products. Search first!")
+        await _send_main_menu(query.message)
+        return
+
+    await query.edit_message_text(f"Showing {len(pending)} pending products...")
+
+    for product in pending:
+        caption = (
+            f"*{_escape_markdown(product['title'])}*\n\n"
+            f"Price: ${product['price']}\n"
+            f"Rating: {product.get('rating', 'N/A')}/5\n\n"
+            f"ID: `{product['id']}`"
+        )
+        keyboard = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "Approve", callback_data=f"approve:{product['id']}"
+                    ),
+                    InlineKeyboardButton(
+                        "Reject", callback_data=f"reject:{product['id']}"
+                    ),
+                ]
+            ]
+        )
+        image_url = product.get("image_url", "")
+        if image_url:
+            try:
+                await query.message.reply_photo(
+                    photo=image_url,
+                    caption=caption,
+                    parse_mode="Markdown",
+                    reply_markup=keyboard,
+                )
+            except Exception:
+                await query.message.reply_text(
+                    caption, parse_mode="Markdown", reply_markup=keyboard
+                )
+        else:
+            await query.message.reply_text(
+                caption, parse_mode="Markdown", reply_markup=keyboard
+            )
+
+    await _send_main_menu(query.message)
+
+
+async def _handle_menu_status(query) -> None:
+    """Handle the Status button press from the main menu."""
+    counts = count_by_status()
+    if not counts:
+        await query.edit_message_text("Queue is empty.")
+        await _send_main_menu(query.message)
+        return
+
+    lines = ["Product Queue Status:\n"]
+    for status, count in sorted(counts.items()):
+        emoji = {"pending": "⏳", "approved": "✅", "rejected": "❌"}.get(status, "📦")
+        lines.append(f"{emoji} {status.capitalize()}: {count}")
+    total = sum(counts.values())
+    lines.append(f"\nTotal: {total}")
+
+    await query.edit_message_text("\n".join(lines))
+    await _send_main_menu(query.message)
+
+
+async def _handle_menu_clear(query) -> None:
+    """Handle the Clear button press from the main menu."""
+    removed = clear_queue()
+    if removed:
+        await query.edit_message_text(f"Cleared {removed} products from the queue.")
+    else:
+        await query.edit_message_text("Queue is already empty.")
+    await _send_main_menu(query.message)
+
+
 async def button_callback(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
-    """Handle inline keyboard button presses (approve/reject)."""
+    """Handle inline keyboard button presses (menu, approve/reject)."""
     query = update.callback_query
     config = context.bot_data.get("config", {})
 
@@ -226,7 +354,39 @@ async def button_callback(
     if not data or ":" not in data:
         return
 
-    action, product_id = data.split(":", 1)
+    action, value = data.split(":", 1)
+
+    # Handle main menu buttons
+    if action == "menu":
+        if value == "search":
+            await _handle_menu_search(query, config)
+        elif value == "queue":
+            await _handle_menu_queue(query)
+        elif value == "status":
+            await _handle_menu_status(query)
+        elif value == "clear":
+            await _handle_menu_clear(query)
+        elif value == "back":
+            await query.edit_message_text(
+                "What would you like to do?", reply_markup=_main_menu_keyboard()
+            )
+        return
+
+    # Handle search sub-menu buttons
+    if action == "search":
+        if value == "default":
+            await query.edit_message_text("Searching for wedding products on AliExpress...")
+            await _run_search(query.message, config)
+        elif value == "custom":
+            context.user_data["awaiting_search_keywords"] = True
+            await query.edit_message_text("✏️ Custom search")
+            await query.message.reply_text(
+                "Enter your search keywords (comma-separated):",
+                reply_markup=ForceReply(selective=False),
+            )
+        return
+
+    product_id = value
 
     if action == "approve":
         # Load product first, attempt downstream work before persisting status
@@ -267,6 +427,32 @@ async def button_callback(
         await _edit_callback_message(query, "❌ Rejected")
 
 
+async def text_message_handler(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Handle plain text messages (e.g. search keyword input)."""
+    config = context.bot_data.get("config", {})
+    if not _is_authorized(update, config):
+        return
+
+    if context.user_data.get("awaiting_search_keywords"):
+        context.user_data["awaiting_search_keywords"] = False
+        raw = update.message.text or ""
+        keywords = [kw.strip() for kw in raw.split(",") if kw.strip()]
+        if not keywords:
+            await update.message.reply_text("No keywords provided.")
+            await _send_main_menu(update.message)
+            return
+        await update.message.reply_text(
+            f"Searching AliExpress for: {', '.join(keywords)}..."
+        )
+        await _run_search(update.message, config, keywords=keywords)
+        return
+
+    # Unknown text — show menu
+    await _send_main_menu(update.message, "I didn't understand that. Use the menu:")
+
+
 def _escape_markdown(text: str) -> str:
     """Escape special characters for Telegram Markdown."""
     for char in ["_", "*", "[", "`"]:
@@ -295,5 +481,6 @@ def create_bot(config: Dict[str, str]) -> Application:
     app.add_handler(CommandHandler("status", status_command))
     app.add_handler(CommandHandler("clear", clear_command))
     app.add_handler(CallbackQueryHandler(button_callback))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))
 
     return app
