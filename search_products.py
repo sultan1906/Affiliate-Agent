@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Set
 
 import requests
 
-from pending_queue import save_queue, load_queue
+from pending_queue import merge_new_products
 
 
 API_URL = "https://api-sg.aliexpress.com/sync"
@@ -141,12 +141,7 @@ def search_and_save(
         }
         queue_items.append(item)
 
-    # Merge with existing queue — preserve approved/rejected items
-    existing = load_queue(output_file)
-    existing_product_ids = {p.get("product_id", "") for p in existing}
-    new_items = [item for item in queue_items if item["product_id"] not in existing_product_ids]
-    merged = existing + new_items
-
-    save_queue(merged, output_file)
-    print(f"Added {len(new_items)} new products to {output_file} ({len(merged)} total)")
+    # Atomically merge with existing queue — dedup handled under lock
+    new_items = merge_new_products(queue_items, output_file)
+    print(f"Added {len(new_items)} new products to {output_file}")
     return new_items

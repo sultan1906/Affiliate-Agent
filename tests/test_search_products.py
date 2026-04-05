@@ -18,25 +18,24 @@ def cleanup_queue():
         os.remove(QUEUE_FILE)
 
 
-def _make_mock_product(product_id: str = "123", title: str = "Wedding Decor",
-                       price: float = 9.99, rating: float = 4.8,
-                       image_url: str = "http://img.com/1.jpg") -> dict:
-    """Create a mock product dict as returned by AliExpress scraper."""
+FAKE_CONFIG = {
+    "ALI_APP_KEY": "key",
+    "ALI_SECRET": "secret",
+    "ALI_TRACKING_ID": "tracking",
+}
+
+
+def _make_api_product(product_id="123", title="Wedding Decor",
+                      price="9.99", image_url="http://img.com/1.jpg"):
+    """Create a mock product dict as returned by AliExpress API."""
     return {
-        "id": product_id,
-        "url": f"https://www.aliexpress.com/item/{product_id}.html",
-        "title": title,
-        "min_price": price,
-        "currency": "USD",
-        "thumbnail": image_url,
-        "trade": "100+ sold",
-        "type": "common",
-        "store": {
-            "url": "https://store.aliexpress.com/1",
-            "name": "Test Store",
-            "id": "1",
-            "member_id": "1",
-        },
+        "product_id": product_id,
+        "product_title": title,
+        "target_sale_price": price,
+        "evaluate_rate": "4.8",
+        "product_main_image_url": image_url,
+        "product_detail_url": f"https://www.aliexpress.com/item/{product_id}.html",
+        "promotion_link": None,
     }
 
 
@@ -44,13 +43,10 @@ def test_search_and_save_creates_queue_file():
     """search_and_save writes products to a JSON file."""
     from search_products import search_and_save
 
-    mock_products = [_make_mock_product(str(i)) for i in range(15)]
-    mock_result = {"products": mock_products}
+    mock_products = [_make_api_product(str(i)) for i in range(15)]
 
-    with patch("search_products.AliExpress") as MockAli:
-        instance = MockAli.return_value
-        instance.search_products.return_value = mock_result
-        search_and_save(output_file=QUEUE_FILE, max_results=10)
+    with patch("search_products._search_aliexpress", return_value=mock_products):
+        search_and_save(FAKE_CONFIG, output_file=QUEUE_FILE, max_results=10)
 
     assert os.path.exists(QUEUE_FILE)
     with open(QUEUE_FILE) as f:
@@ -64,13 +60,10 @@ def test_search_and_save_product_fields():
     """Each saved product has required fields."""
     from search_products import search_and_save
 
-    mock_products = [_make_mock_product("42", "Bridal Clip", 5.99, 4.9, "http://img.com/clip.jpg")]
-    mock_result = {"products": mock_products}
+    mock_products = [_make_api_product("42", "Bridal Clip", "5.99", "http://img.com/clip.jpg")]
 
-    with patch("search_products.AliExpress") as MockAli:
-        instance = MockAli.return_value
-        instance.search_products.return_value = mock_result
-        search_and_save(output_file=QUEUE_FILE, max_results=10)
+    with patch("search_products._search_aliexpress", return_value=mock_products):
+        search_and_save(FAKE_CONFIG, output_file=QUEUE_FILE, max_results=10)
 
     with open(QUEUE_FILE) as f:
         data = json.load(f)
