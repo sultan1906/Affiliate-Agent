@@ -105,6 +105,26 @@ def clear_queue(filepath: str = DEFAULT_QUEUE_FILE) -> int:
     return removed
 
 
+def merge_new_products(
+    new_items: List[Dict[str, Any]], filepath: str = DEFAULT_QUEUE_FILE
+) -> List[Dict[str, Any]]:
+    """Atomically merge new products into the queue, skipping duplicates.
+
+    Returns the list of items actually added.
+    """
+    added: List[Dict[str, Any]] = []
+
+    def _update(products):
+        existing_ids = {p.get("product_id", "") for p in products}
+        for item in new_items:
+            if item["product_id"] not in existing_ids:
+                products.append(item)
+                added.append(item)
+
+    _atomic_update(filepath, _update)
+    return added
+
+
 def count_by_status(filepath: str = DEFAULT_QUEUE_FILE) -> Dict[str, int]:
     """Return counts of products grouped by status."""
     products = load_queue(filepath)
