@@ -101,8 +101,11 @@ def search_and_save(
 
     all_products: List[Dict[str, Any]] = []
 
+    print(f"Starting AliExpress search with {len(keywords)} keywords: {keywords}")
     for keyword in keywords:
+        print(f"Searching AliExpress for: '{keyword}'")
         products = _search_aliexpress(keyword, config)
+        print(f"  Found {len(products)} products for '{keyword}'")
         all_products.extend(products)
 
     # Deduplicate by product id

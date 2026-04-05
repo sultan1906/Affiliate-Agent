@@ -92,6 +92,14 @@ def get_products_by_status(
     return [p for p in products if p.get("status") == status]
 
 
+def clear_queue(filepath: str = DEFAULT_QUEUE_FILE) -> int:
+    """Remove all products from the queue. Returns the number of items removed."""
+    products = load_queue(filepath)
+    count = len(products)
+    save_queue([], filepath)
+    return count
+
+
 def count_by_status(filepath: str = DEFAULT_QUEUE_FILE) -> Dict[str, int]:
     """Return counts of products grouped by status."""
     products = load_queue(filepath)

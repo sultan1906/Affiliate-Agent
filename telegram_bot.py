@@ -19,6 +19,7 @@ from telegram.ext import (
 
 from affiliate_links import generate_affiliate_link
 from pending_queue import (
+    clear_queue,
     count_by_status,
     get_products_by_status,
     load_queue,
@@ -50,7 +51,8 @@ async def start_command(
         "Available commands:\n"
         "/search - Search for wedding products on AliExpress\n"
         "/queue - Review pending products (approve/reject)\n"
-        "/status - Show product queue statistics"
+        "/status - Show product queue statistics\n"
+        "/clear - Clear all products from the queue"
     )
 
 
@@ -183,6 +185,21 @@ async def status_command(
     await update.message.reply_text("\n".join(lines))
 
 
+async def clear_command(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Handle /clear command - remove all products from the queue."""
+    config = context.bot_data.get("config", {})
+    if not _is_authorized(update, config):
+        return
+
+    removed = clear_queue()
+    if removed:
+        await update.message.reply_text(f"Cleared {removed} products from the queue.")
+    else:
+        await update.message.reply_text("Queue is already empty.")
+
+
 async def _edit_callback_message(query, text: str) -> None:
     """Edit the callback message, handling both photo and text messages."""
     if query.message and query.message.caption is not None:
@@ -276,6 +293,7 @@ def create_bot(config: Dict[str, str]) -> Application:
     app.add_handler(CommandHandler("search", search_command))
     app.add_handler(CommandHandler("queue", queue_command))
     app.add_handler(CommandHandler("status", status_command))
+    app.add_handler(CommandHandler("clear", clear_command))
     app.add_handler(CallbackQueryHandler(button_callback))
 
     return app
