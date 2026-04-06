@@ -146,3 +146,14 @@ def test_search_uses_hotproduct_endpoint():
         assert call_params["method"] == "aliexpress.affiliate.hotproduct.query"
         assert call_params["sort"] == "COMMISSION_RATE_DESC"
         assert call_params["ship_to_country"] == "IL"
+
+
+def test_search_and_save_passes_wedding_categories():
+    """search_and_save always anchors to wedding category IDs by default."""
+    from search_products import search_and_save, WEDDING_CATEGORY_IDS
+
+    with patch("search_products._search_aliexpress", return_value=[]) as mock_search:
+        search_and_save(FAKE_CONFIG, output_file=QUEUE_FILE, max_results=10)
+
+        _, kwargs = mock_search.call_args
+        assert kwargs["category_ids"] == WEDDING_CATEGORY_IDS

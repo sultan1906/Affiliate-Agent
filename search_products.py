@@ -30,6 +30,9 @@ MIN_RATING = 4.5
 # Default shipping region
 DEFAULT_SHIP_TO = "IL"
 
+# Wedding category IDs — anchors all searches to prevent keyword bleed
+WEDDING_CATEGORY_IDS = "320"  # Weddings & Events (top-level)
+
 
 def _sign_params(params: Dict[str, str], secret: str) -> str:
     """Generate HMAC-MD5 signature for AliExpress global API."""
@@ -148,6 +151,8 @@ def search_and_save(
     """
     if keywords is None:
         keywords = WEDDING_KEYWORDS
+    if category_ids is None:
+        category_ids = WEDDING_CATEGORY_IDS
 
     all_products: List[Dict[str, Any]] = []
 
