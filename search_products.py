@@ -143,7 +143,7 @@ def search_and_save(
         keywords: Search keywords (defaults to WEDDING_KEYWORDS).
         max_results: Maximum number of products to save.
         category_ids: Comma-separated AliExpress category IDs for anchoring.
-        ship_to_country: Two-letter country code (default: US).
+        ship_to_country: Two-letter country code (default: IL).
         sort: Sort order (default: COMMISSION_RATE_DESC).
 
     Returns:
