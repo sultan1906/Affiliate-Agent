@@ -142,12 +142,7 @@ async def queue_command(
     )
 
     for product in pending:
-        caption = (
-            f"*{_escape_markdown(product['title'])}*\n\n"
-            f"Price: ${product['price']}\n"
-            f"Rating: {product.get('rating', 'N/A')}/5\n\n"
-            f"ID: `{product['id']}`"
-        )
+        caption = _format_product_caption(product)
 
         keyboard = InlineKeyboardMarkup(
             [
@@ -274,12 +269,7 @@ async def _handle_menu_queue(query) -> None:
     await query.edit_message_text(f"Showing {len(pending)} pending products...")
 
     for product in pending:
-        caption = (
-            f"*{_escape_markdown(product['title'])}*\n\n"
-            f"Price: ${product['price']}\n"
-            f"Rating: {product.get('rating', 'N/A')}/5\n\n"
-            f"ID: `{product['id']}`"
-        )
+        caption = _format_product_caption(product)
         keyboard = InlineKeyboardMarkup(
             [
                 [
@@ -472,6 +462,21 @@ async def text_message_handler(
 
     # Unknown text — show menu
     await _send_main_menu(update.message, "I didn't understand that. Use the menu:")
+
+
+def _format_product_caption(product: Dict[str, Any]) -> str:
+    """Build a Markdown caption with product details."""
+    lines = [
+        f"*{_escape_markdown(product['title'])}*\n",
+        f"Price: ${product['price']}",
+        f"Rating: {product.get('rating', 'N/A')}/5",
+    ]
+    if product.get("orders"):
+        lines.append(f"Orders: {product['orders']:,}")
+    if product.get("commission_rate") is not None:
+        lines.append(f"Commission: {product['commission_rate']}%")
+    lines.append(f"\nID: `{product['id']}`")
+    return "\n".join(lines)
 
 
 def _escape_markdown(text: str) -> str:
